@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
@@ -37,13 +38,19 @@ public class EncryptionUtil {
                 .put(globalSecret.getBytes(StandardCharsets.UTF_8))
                 .array();
 
-        byte[] mixingSalt = "SystemMasterKeySalt".getBytes(StandardCharsets.UTF_8);
+        byte[] salt = "SystemMasterKeySalt".getBytes(StandardCharsets.UTF_8);
+        byte[] info = "MasterKeyDerivation".getBytes(StandardCharsets.UTF_8);
 
-        PBEKeySpec spec = new PBEKeySpec(byteToCharArray(combinedInput),
-                mixingSalt, 600000, KEY_SIZE_BITS);
+        Mac hmac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec saltKey = new SecretKeySpec(salt, "HmacSHA256");
+        hmac.init(saltKey);
+        byte[] prk = hmac.doFinal(combinedInput);
 
-        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-        byte[] masterKeyBytes = factory.generateSecret(spec).getEncoded();
+        hmac.init(new SecretKeySpec(prk, "HmacSHA256"));
+        hmac.update(info);
+        hmac.update((byte) 0x01);
+        byte[] masterKeyBytes = Arrays.copyOf(hmac.doFinal(), KEY_SIZE_BITS / 8);
+
         return new SecretKeySpec(masterKeyBytes, KEY_ALGORITHM);
     }
 
